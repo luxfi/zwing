@@ -33,6 +33,10 @@ type Conn struct {
 
 // newConn wraps a freshly handshaken net.Conn. role determines which
 // direction's key is used for reading vs writing.
+//
+// chacha20poly1305.New only fails on a wrong-size key. We always pass a
+// 32-byte HKDF output, so the construction is infallible; we use
+// mustChaCha20 to make that invariant explicit.
 func newConn(raw net.Conn, res *handshakeResult, initiator bool) (*Conn, error) {
 	c := &Conn{raw: raw, remote: res.remote}
 	var rxKey, txKey []byte
@@ -43,21 +47,30 @@ func newConn(raw net.Conn, res *handshakeResult, initiator bool) (*Conn, error) 
 		txKey = res.keyR2I
 		rxKey = res.keyI2R
 	}
-	rx, err := chacha20poly1305.New(rxKey)
-	if err != nil {
-		return nil, err
-	}
-	tx, err := chacha20poly1305.New(txKey)
-	if err != nil {
-		return nil, err
-	}
-	c.readAEAD = rx
-	c.writeAEAD = tx
+	c.readAEAD = mustChaCha20(rxKey)
+	c.writeAEAD = mustChaCha20(txKey)
 	// Best-effort zeroing of the channel keys held by the handshake result
 	// once the AEADs have copied them internally.
 	zero(res.keyI2R)
 	zero(res.keyR2I)
 	return c, nil
+}
+
+// mustChaCha20 builds a ChaCha20-Poly1305 AEAD from a key. The only
+// failure mode of chacha20poly1305.New is a wrong-size key — every
+// caller in this package supplies a 32-byte HKDF output, so any
+// failure here is a programming bug.
+//
+// The construction is deliberately unconditional: a wrong-size key
+// would be caught in tests via TestMustChaCha20Panics. In production
+// every key reaching this function is a 32-byte HKDF/chacha20KeySize
+// slice, by construction.
+func mustChaCha20(key []byte) cipher.AEAD {
+	if len(key) != chacha20poly1305.KeySize {
+		panic("zwing: chacha20poly1305 key must be 32 bytes")
+	}
+	a, _ := chacha20poly1305.New(key)
+	return a
 }
 
 // RemoteIdentity returns the verified remote IdentityPublic. Callers may
@@ -166,21 +179,16 @@ func nonceFor(seq uint64) [12]byte {
 // aeadSeal/aeadOpen are used during the handshake to protect the
 // responder identity payload. They use the X-Wing ciphertext as
 // associated data so the binding cannot be transplanted onto another
-// session.
-func aeadSeal(key, nonceLabel, aad, plaintext []byte) ([]byte, error) {
-	aead, err := chacha20poly1305.New(key)
-	if err != nil {
-		return nil, err
-	}
+// session. The key is always a 32-byte HKDF output, so AEAD
+// construction never fails (see mustChaCha20).
+func aeadSeal(key, nonceLabel, aad, plaintext []byte) []byte {
+	aead := mustChaCha20(key)
 	nonce := handshakeNonce(nonceLabel)
-	return aead.Seal(nil, nonce[:], plaintext, aad), nil
+	return aead.Seal(nil, nonce[:], plaintext, aad)
 }
 
 func aeadOpen(key, nonceLabel, aad, ciphertext []byte) ([]byte, error) {
-	aead, err := chacha20poly1305.New(key)
-	if err != nil {
-		return nil, err
-	}
+	aead := mustChaCha20(key)
 	nonce := handshakeNonce(nonceLabel)
 	pt, err := aead.Open(nil, nonce[:], ciphertext, aad)
 	if err != nil {

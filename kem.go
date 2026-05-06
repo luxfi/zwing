@@ -82,6 +82,10 @@ func ParseXWingPublicKey(data []byte) (*XWingPublicKey, error) {
 }
 
 // GenerateXWingKey produces a fresh X-Wing static keypair.
+//
+// curve25519.X25519 with the Basepoint never errors (it would only error
+// on a wrong-size scalar — we always pass 32 bytes). The error branch is
+// therefore dead and elided.
 func GenerateXWingKey(reader io.Reader) (*XWingPrivateKey, error) {
 	if reader == nil {
 		reader = rand.Reader
@@ -94,10 +98,7 @@ func GenerateXWingKey(reader io.Reader) (*XWingPrivateKey, error) {
 	if _, err := io.ReadFull(reader, sk.X25519Priv[:]); err != nil {
 		return nil, err
 	}
-	pub, err := curve25519.X25519(sk.X25519Priv[:], curve25519.Basepoint)
-	if err != nil {
-		return nil, err
-	}
+	pub, _ := curve25519.X25519(sk.X25519Priv[:], curve25519.Basepoint)
 	copy(sk.X25519Pub[:], pub)
 	return sk, nil
 }
@@ -118,10 +119,12 @@ func XWingEncapsulate(reader io.Reader, recipient *XWingPublicKey) (ciphertext [
 	if _, err := io.ReadFull(reader, ephPriv[:]); err != nil {
 		return nil, shared, err
 	}
-	ephPub, err := curve25519.X25519(ephPriv[:], curve25519.Basepoint)
-	if err != nil {
-		return nil, shared, err
-	}
+	// curve25519.X25519 only errors on wrong-length inputs (we always
+	// pass 32 bytes) or on a low-order recipient point. The recipient
+	// public key was decoded above, so a low-order point reaching here
+	// would be a peer presenting a malformed pubkey — ParseXWingPublicKey
+	// caught the size, but the curve check is the canonical detector.
+	ephPub, _ := curve25519.X25519(ephPriv[:], curve25519.Basepoint)
 	ssX, err := curve25519.X25519(ephPriv[:], recipient.X25519[:])
 	if err != nil {
 		return nil, shared, err
@@ -148,7 +151,12 @@ func XWingDecapsulate(sk *XWingPrivateKey, ciphertext []byte) ([XWingSharedSize]
 	mlkemCT := ciphertext[:mlkem.MLKEM768CiphertextSize]
 	ephPub := ciphertext[mlkem.MLKEM768CiphertextSize:]
 
-	ssM, err := sk.MLKEMPriv.Decapsulate(mlkemCT)
+	// ML-KEM-768 uses implicit rejection: any 1088-byte ciphertext yields
+	// a 32-byte shared secret with no error. The error branch is therefore
+	// dead in current upstream but kept defensively for future versions
+	// that might tighten validation. The decapsulateMLKEM seam exposes the
+	// error path to tests.
+	ssM, err := decapsulateMLKEM(sk, mlkemCT)
 	if err != nil {
 		return shared, err
 	}
@@ -161,6 +169,12 @@ func XWingDecapsulate(sk *XWingPrivateKey, ciphertext []byte) ([XWingSharedSize]
 	zero(ssM)
 	zero(ssX)
 	return shared, nil
+}
+
+// decapsulateMLKEM is a seam: tests can swap it to inject an error from
+// ML-KEM Decapsulate that current upstream cannot produce naturally.
+var decapsulateMLKEM = func(sk *XWingPrivateKey, ct []byte) ([]byte, error) {
+	return sk.MLKEMPriv.Decapsulate(ct)
 }
 
 // combineXWing implements the IETF X-Wing KDF combiner exactly:

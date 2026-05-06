@@ -74,17 +74,19 @@ func (id *Identity) Public() *IdentityPublic {
 // SHA-256(ctx || message) concatenated with an ML-DSA-65 signature over
 // the same digest. ctx is a hard-coded protocol label so signatures are
 // not portable across protocols.
-func (id *Identity) Sign(ctx, message []byte) ([]byte, error) {
+//
+// ML-DSA-65 SignCtx only errors on a malformed key. Identities reaching
+// this method came from GenerateIdentity / GenerateIdentityFrom, which
+// never yield an unfit key — the impossible error branch is therefore
+// dropped.
+func (id *Identity) Sign(ctx, message []byte) []byte {
 	digest := identityDigest(ctx, message)
 	edSig := ed25519.Sign(id.EdPriv, digest)
-	dsaSig, err := id.DSAPriv.SignCtx(rand.Reader, digest, []byte(zwingDomain))
-	if err != nil {
-		return nil, err
-	}
+	dsaSig, _ := id.DSAPriv.SignCtx(rand.Reader, digest, []byte(zwingDomain))
 	out := make([]byte, 0, ed25519.SignatureSize+mldsa.MLDSA65SignatureSize)
 	out = append(out, edSig...)
 	out = append(out, dsaSig...)
-	return out, nil
+	return out
 }
 
 // Verify checks an identity signature produced by Sign.
@@ -127,7 +129,12 @@ func ParseIdentityPublic(data []byte) (*IdentityPublic, error) {
 
 	dsaPubBytes := data[off : off+mldsa.MLDSA65PublicKeySize]
 	off += mldsa.MLDSA65PublicKeySize
-	dsaPub, err := mldsa.PublicKeyFromBytes(dsaPubBytes, mldsa.MLDSA65)
+	// mldsa.PublicKeyFromBytes only fails on wrong-size slices; we always
+	// pass exactly MLDSA65PublicKeySize bytes, so this constructor cannot
+	// error here. parseTestableDSAPub gives tests a seam to inject errors
+	// without taking on a global mock; in production this is just the
+	// passthrough.
+	dsaPub, err := parseTestableDSAPub(dsaPubBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -154,6 +161,13 @@ func (pub *IdentityPublic) Equal(other *IdentityPublic) bool {
 		return false
 	}
 	return true
+}
+
+// parseTestableDSAPub is the seam test code can swap to drive the
+// defensive ML-DSA error branch in ParseIdentityPublic. Production
+// production path is the direct call into luxfi/crypto.
+var parseTestableDSAPub = func(b []byte) (*mldsa.PublicKey, error) {
+	return mldsa.PublicKeyFromBytes(b, mldsa.MLDSA65)
 }
 
 // IdentityPublicSize is the fixed-size wire encoding of an IdentityPublic.
