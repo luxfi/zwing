@@ -145,8 +145,9 @@ export function signIdentity(
 ): Uint8Array {
   const digest = identityDigest(ctx, message);
   const edSig = ed25519.sign(digest, id.edSk);
-  // Noble ml-dsa API: sign(msg, secretKey).
-  const mlSig = ml_dsa65.sign(digest, id.mlSk);
+  // Noble ml-dsa API: sign(msg, secretKey, opts). Pass ZWING_DOMAIN as
+  // the FIPS 204 context to match the Go DSAPriv.SignCtx call.
+  const mlSig = ml_dsa65.sign(digest, id.mlSk, { context: ZWING_DOMAIN });
   const out = new Uint8Array(SIGNATURE_SIZE);
   out.set(edSig, 0);
   out.set(mlSig, ED25519_SIGNATURE_SIZE);
@@ -169,8 +170,8 @@ export function verifyIdentity(
   if (!ed25519.verify(edSig, digest, pub.edPk)) {
     throw new Error("zwing: ed25519 verify failed");
   }
-  // Noble ml-dsa API: verify(sig, msg, pubKey).
-  if (!ml_dsa65.verify(mlSig, digest, pub.mlPk)) {
+  // Noble ml-dsa API: verify(sig, msg, pubKey, opts). Same context as sign.
+  if (!ml_dsa65.verify(mlSig, digest, pub.mlPk, { context: ZWING_DOMAIN })) {
     throw new Error("zwing: ml-dsa-65 verify failed");
   }
 }
