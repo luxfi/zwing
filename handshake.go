@@ -101,18 +101,15 @@ func (h *HandshakeResponse) MarshalBinary() []byte {
 }
 
 func parseHandshakeResponse(data []byte) (*HandshakeResponse, error) {
+	// The precheck below guarantees we have enough bytes for ct + the 2-byte
+	// encLen, so the ct/encLen reads here never short-fail; only the variable
+	// encLen body read can.
 	if len(data) < XWingCiphertextSize+2 {
 		return nil, ErrInvalidWireFormat
 	}
 	r := newSliceReader(data)
-	ct, err := r.readN(XWingCiphertextSize)
-	if err != nil {
-		return nil, err
-	}
-	encLen, err := r.readU16()
-	if err != nil {
-		return nil, err
-	}
+	ct, _ := r.readN(XWingCiphertextSize)
+	encLen, _ := r.readU16()
 	enc, err := r.readN(int(encLen))
 	if err != nil {
 		return nil, err
@@ -140,10 +137,7 @@ func runInitiator(conn io.ReadWriter, cfg *Config) (*handshakeResult, error) {
 
 	// 1. Send HandshakeInit.
 	idPub := local.Public().MarshalBinary()
-	sig, err := local.Sign([]byte(hsLabelInit), idPub)
-	if err != nil {
-		return nil, err
-	}
+	sig := local.Sign([]byte(hsLabelInit), idPub)
 	init := &HandshakeInit{IdentityPub: idPub, Signature: sig}
 	if err := writeFrame(conn, init.MarshalBinary()); err != nil {
 		return nil, err
@@ -241,18 +235,11 @@ func runResponder(conn io.ReadWriter, cfg *Config) (*handshakeResult, error) {
 	// 3. Sign transcript and seal local identity.
 	idPub := local.Public().MarshalBinary()
 	transcript := transcriptHash(init.IdentityPub, ct)
-	sig, err := local.Sign([]byte(hsLabelResponse), transcript)
-	if err != nil {
-		return nil, err
-	}
-
+	sig := local.Sign([]byte(hsLabelResponse), transcript)
 	plaintext := buildRespIDPayload(idPub, sig)
 	idKey := derive(shared[:], []byte("lux.zwing.v1/resp-id"), chacha20KeySize)
 	defer zero(idKey)
-	ciphertext, err := aeadSeal(idKey, []byte("zwing-resp-id"), ct, plaintext)
-	if err != nil {
-		return nil, err
-	}
+	ciphertext := aeadSeal(idKey, []byte("zwing-resp-id"), ct, plaintext)
 
 	resp := &HandshakeResponse{XWingCiphertext: ct, EncryptedID: ciphertext}
 	if err := writeFrame(conn, resp.MarshalBinary()); err != nil {
@@ -272,13 +259,14 @@ func runResponder(conn io.ReadWriter, cfg *Config) (*handshakeResult, error) {
 // for the requested label. We use SHA-256 (not SHA3) here to avoid pulling
 // a second hash construction into the critical path; the underlying secret
 // is already SHA3-256-derived by the X-Wing combiner.
+//
+// HKDF over a fixed-length input never short-reads for the sizes we ask
+// for (≤32 bytes), so io.ReadFull cannot fail. We therefore drop the
+// always-dead error branch.
 func derive(secret, label []byte, size int) []byte {
 	out := make([]byte, size)
 	r := hkdf.New(sha256.New, secret, nil, label)
-	if _, err := io.ReadFull(r, out); err != nil {
-		// HKDF over a fixed-length input never fails for reasonable sizes.
-		panic(err)
-	}
+	_, _ = io.ReadFull(r, out)
 	return out
 }
 
