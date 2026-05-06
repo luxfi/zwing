@@ -1,0 +1,50 @@
+{
+  "name": "@luxfi/zwing",
+  "version": "0.2.2",
+  "description": "Z-Wing — Lux post-quantum secure channel (TypeScript). IETF X-Wing KEM combiner.",
+  "type": "module",
+  "main": "./dist/zwing.js",
+  "module": "./dist/zwing.js",
+  "types": "./dist/zwing.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/zwing.d.ts",
+      "import": "./dist/zwing.js"
+    }
+  },
+  "files": [
+    "dist",
+    "zwing.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "post-quantum",
+    "kem",
+    "x-wing",
+    "ml-kem",
+    "zwing",
+    "lux"
+  ],
+  "author": "Lux Industries <dev@lux.network>",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luxfi/zwing.git",
+    "directory": "js"
+  },
+  "homepage": "https://github.com/luxfi/zwing/tree/main/js#readme",
+  "bugs": "https://github.com/luxfi/zwing/issues",
+  "dependencies": {
+    "@noble/hashes": "^2.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
+  }
+}
