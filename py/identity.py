@@ -140,10 +140,16 @@ def identity_digest(ctx: bytes, message: bytes) -> bytes:
 
 
 def sign_identity(identity: Identity, ctx: bytes, message: bytes) -> bytes:
-    """Concatenate Ed25519 and ML-DSA-65 detached signatures over the digest."""
+    """Concatenate Ed25519 and ML-DSA-65 detached signatures over the digest.
+
+    The ML-DSA-65 signing call passes ``ZWING_DOMAIN`` as the FIPS 204
+    ``ctx`` parameter — this matches the Go side's
+    ``DSAPriv.SignCtx(rand, digest, []byte("lux.zwing.v1"))`` so Python
+    and Go signatures verify under each other byte-for-byte.
+    """
     digest = identity_digest(ctx, message)
     ed_sig = identity.ed_sk.sign(digest)
-    ml_sig = ML_DSA_65.sign(identity.ml_sk, digest)
+    ml_sig = ML_DSA_65.sign(identity.ml_sk, digest, ctx=ZWING_DOMAIN)
     return ed_sig + ml_sig
 
 
@@ -163,7 +169,7 @@ def verify_identity(
     except Exception as e:  # cryptography raises InvalidSignature
         raise ValueError("zwing: ed25519 verify failed") from e
 
-    if not ML_DSA_65.verify(pub.ml_pk, digest, ml_sig):
+    if not ML_DSA_65.verify(pub.ml_pk, digest, ml_sig, ctx=ZWING_DOMAIN):
         raise ValueError("zwing: ml-dsa-65 verify failed")
 
 
