@@ -13,7 +13,11 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// X-Wing combiner constants per draft-connolly-cfrg-xwing-kem.
+// X-Wing KEM combiner per IETF draft-connolly-cfrg-xwing-kem.
+// EXACT labels — Z-Wing uses real IETF X-Wing, no rebranding,
+// for full interop with any X-Wing peer. The Lux value-add lives
+// in the layers ABOVE the KEM (identity binding, RNS transport),
+// not by forking the KEM itself.
 //
 // shared_secret = SHA3-256( "\./" || "X-Wing" || ss_M || ss_X || ct_X || pk_X )
 //
@@ -23,7 +27,7 @@ import (
 //	pk_X   X25519 static public key of recipient (32 bytes)
 var (
 	xwingLabelPrefix = []byte{'\\', '.', '/'} // 3 bytes: backslash, dot, slash
-	xwingLabelName   = []byte("X-Wing")       // 6 bytes ASCII
+	xwingLabelName   = []byte("X-Wing")       // 6 bytes ASCII — IETF spec
 )
 
 // X-Wing wire sizes.
