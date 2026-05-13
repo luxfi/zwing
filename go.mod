@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/luxfi/api v1.0.10
-	github.com/luxfi/crypto v1.18.3
+	github.com/luxfi/crypto v1.19.0
 	golang.org/x/crypto v0.50.0
 )
 
