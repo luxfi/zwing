@@ -1,6 +1,6 @@
 module github.com/luxfi/zwing
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/luxfi/api v1.0.10
