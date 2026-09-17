@@ -124,10 +124,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 	const maxPlain = MaxFrameSize - chacha20poly1305.Overhead
 	written := 0
 	for written < len(b) {
-		end := written + maxPlain
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(written+maxPlain, len(b))
 		chunk := b[written:end]
 
 		if c.writeSeq == ^uint64(0) {

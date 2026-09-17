@@ -5,12 +5,12 @@ package zwing
 
 import (
 	"crypto/rand"
+	"crypto/sha3"
 	"errors"
 	"io"
 
 	"github.com/luxfi/crypto/mlkem"
 	"golang.org/x/crypto/curve25519"
-	"golang.org/x/crypto/sha3"
 )
 
 // X-Wing KEM combiner per IETF draft-connolly-cfrg-xwing-kem.

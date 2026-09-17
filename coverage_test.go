@@ -476,14 +476,14 @@ func (nopRW) Write(p []byte) (int, error) { return len(p), nil }
 // wraps a real net.Conn but can return a chosen error on the Nth read
 // or write call.
 type controlledRW struct {
-	r        io.Reader
-	w        io.Writer
-	failRead int  // 1-indexed; 0 = never
+	r         io.Reader
+	w         io.Writer
+	failRead  int // 1-indexed; 0 = never
 	failWrite int
-	readN    int
-	writeN   int
-	readErr  error
-	writeErr error
+	readN     int
+	writeN    int
+	readErr   error
+	writeErr  error
 }
 
 func (c *controlledRW) Read(p []byte) (int, error) {
@@ -505,8 +505,8 @@ func (c *controlledRW) Write(p []byte) (int, error) {
 func TestRunInitiatorWriteFails(t *testing.T) {
 	clientID, _ := newPair(t)
 	rw := &controlledRW{
-		r: bytes.NewReader(nil),
-		w: io.Discard,
+		r:         bytes.NewReader(nil),
+		w:         io.Discard,
 		failWrite: 1,
 		writeErr:  errors.New("write boom"),
 	}
@@ -1214,7 +1214,7 @@ func TestXWingDecapsulateLowOrderEph(t *testing.T) {
 		t.Fatalf("identity: %v", err)
 	}
 	ct := make([]byte, XWingCiphertextSize)
-	for i := 0; i < XWingCiphertextSize-32; i++ {
+	for i := range XWingCiphertextSize - 32 {
 		ct[i] = 0xCC
 	}
 	// Trailing 32 bytes are zero → low-order point → ssX errors.
@@ -1239,10 +1239,7 @@ type partialWriter struct {
 func (w *partialWriter) Write(p []byte) (int, error) {
 	if w.written < w.succeed {
 		room := w.succeed - w.written
-		n := len(p)
-		if n > room {
-			n = room
-		}
+		n := min(len(p), room)
 		w.written += n
 		if n < len(p) {
 			return n, w.err
@@ -1432,12 +1429,10 @@ func TestConcurrentReadsAreSerialized(t *testing.T) {
 	// 8 concurrent writes from server, 8 concurrent reads on client.
 	const N = 8
 	var wg sync.WaitGroup
-	for i := 0; i < N; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range N {
+		wg.Go(func() {
 			_, _ = sConn.Write([]byte("z"))
-		}()
+		})
 	}
 	got := 0
 	for got < N {
